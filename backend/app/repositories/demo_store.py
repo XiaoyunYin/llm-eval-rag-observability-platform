@@ -7,13 +7,13 @@ from app.domain.models import (
     EvaluationCase,
     EvaluationResult,
     EvaluationRun,
-    JudgeScore,
     ProviderConfig,
     ProviderKind,
     RunStatus,
     TraceRecord,
     TraceStage,
 )
+from app.judging.scoring import aggregate_two_judges, build_judge_score
 from app.schemas.evaluation import EvaluationRunCreate
 
 
@@ -155,6 +155,67 @@ class DemoEvaluationStore:
         self._traces[run.id] = self._build_traces(run.id, run.created_at)
 
     def _build_results(self, run_id: str, provider_config_id: str) -> list[EvaluationResult]:
+        case_001_judge_a = build_judge_score(
+            id=f"{run_id}-judge-a-001",
+            case_id="case-001",
+            correctness=5,
+            faithfulness=5,
+            citation_quality=4,
+            critical_unsupported_claim=False,
+            reason="Answer covers staged rotation and revocation order.",
+            judge_model="mock-judge-a-v1",
+        )
+        case_001_judge_b = build_judge_score(
+            id=f"{run_id}-judge-b-001",
+            case_id="case-001",
+            correctness=5,
+            faithfulness=4,
+            citation_quality=4,
+            critical_unsupported_claim=False,
+            reason="Answer is faithful and cites the expected operational order.",
+            judge_model="mock-judge-b-v1",
+        )
+        case_002_judge_a = build_judge_score(
+            id=f"{run_id}-judge-a-002",
+            case_id="case-002",
+            correctness=4,
+            faithfulness=4,
+            citation_quality=3,
+            critical_unsupported_claim=False,
+            reason="Answer names the main retrieval diagnostics expected by the rubric.",
+            judge_model="mock-judge-a-v1",
+        )
+        case_002_judge_b = build_judge_score(
+            id=f"{run_id}-judge-b-002",
+            case_id="case-002",
+            correctness=4,
+            faithfulness=4,
+            citation_quality=3,
+            critical_unsupported_claim=False,
+            reason="Answer meets the minimum pass thresholds.",
+            judge_model="mock-judge-b-v1",
+        )
+        case_003_judge_a = build_judge_score(
+            id=f"{run_id}-judge-a-003",
+            case_id="case-003",
+            correctness=4,
+            faithfulness=4,
+            citation_quality=3,
+            critical_unsupported_claim=False,
+            reason="Answer captures explicit failure storage but omits retry metadata.",
+            judge_model="mock-judge-a-v1",
+        )
+        case_003_judge_b = build_judge_score(
+            id=f"{run_id}-judge-b-003",
+            case_id="case-003",
+            correctness=4,
+            faithfulness=4,
+            citation_quality=3,
+            critical_unsupported_claim=False,
+            reason="Answer is acceptable for the controlled demo rubric.",
+            judge_model="mock-judge-b-v1",
+        )
+
         return [
             EvaluationResult(
                 id=f"{run_id}-result-001",
@@ -164,13 +225,12 @@ class DemoEvaluationStore:
                 answer="Use a staged key rotation: create, deploy, verify, then revoke the old key.",
                 latency_ms=812,
                 cache_hit=True,
-                judge_score=JudgeScore(
-                    id=f"{run_id}-judge-001",
+                judge_score=case_001_judge_a,
+                judge_review=aggregate_two_judges(
+                    id=f"{run_id}-judge-review-001",
                     case_id="case-001",
-                    score=0.91,
-                    passed=True,
-                    reason="Answer covers staged rotation and revocation order.",
-                    judge_model="mock-judge-v1",
+                    judge_a_score=case_001_judge_a,
+                    judge_b_score=case_001_judge_b,
                 ),
             ),
             EvaluationResult(
@@ -181,13 +241,12 @@ class DemoEvaluationStore:
                 answer="Check dense retrieval, BM25 coverage, source freshness, and RRF weighting.",
                 latency_ms=1044,
                 cache_hit=False,
-                judge_score=JudgeScore(
-                    id=f"{run_id}-judge-002",
+                judge_score=case_002_judge_a,
+                judge_review=aggregate_two_judges(
+                    id=f"{run_id}-judge-review-002",
                     case_id="case-002",
-                    score=0.86,
-                    passed=True,
-                    reason="Answer names the main retrieval diagnostics expected by the rubric.",
-                    judge_model="mock-judge-v1",
+                    judge_a_score=case_002_judge_a,
+                    judge_b_score=case_002_judge_b,
                 ),
             ),
             EvaluationResult(
@@ -198,13 +257,12 @@ class DemoEvaluationStore:
                 answer="Provider failures are persisted as explicit results with error and trace metadata.",
                 latency_ms=677,
                 cache_hit=False,
-                judge_score=JudgeScore(
-                    id=f"{run_id}-judge-003",
+                judge_score=case_003_judge_a,
+                judge_review=aggregate_two_judges(
+                    id=f"{run_id}-judge-review-003",
                     case_id="case-003",
-                    score=0.77,
-                    passed=True,
-                    reason="Answer captures explicit failure storage but omits retry metadata.",
-                    judge_model="mock-judge-v1",
+                    judge_a_score=case_003_judge_a,
+                    judge_b_score=case_003_judge_b,
                 ),
             ),
         ]

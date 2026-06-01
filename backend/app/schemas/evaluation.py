@@ -3,7 +3,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.domain.models import ProviderKind, RunStatus, TraceStage
+from app.domain.models import JudgeReviewStatus, ProviderKind, RunStatus, TraceStage
 
 
 class DatasetSchema(BaseModel):
@@ -42,10 +42,26 @@ class ProviderConfigSchema(BaseModel):
 class JudgeScoreSchema(BaseModel):
     id: str
     case_id: str
-    score: float = Field(ge=0, le=1)
+    correctness: int = Field(ge=1, le=5)
+    faithfulness: int = Field(ge=1, le=5)
+    citation_quality: int = Field(ge=1, le=5)
+    critical_unsupported_claim: bool
     passed: bool
     reason: str
     judge_model: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class JudgeReviewSchema(BaseModel):
+    id: str
+    case_id: str
+    judge_a_score: JudgeScoreSchema
+    judge_b_score: JudgeScoreSchema
+    judge_a_decision: bool
+    judge_b_decision: bool
+    agreement: bool
+    status: JudgeReviewStatus
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -59,6 +75,7 @@ class EvaluationResultSchema(BaseModel):
     latency_ms: int
     cache_hit: bool
     judge_score: JudgeScoreSchema
+    judge_review: JudgeReviewSchema
     error: str | None = None
 
     model_config = ConfigDict(from_attributes=True)

@@ -104,7 +104,7 @@ Retrieval and evaluation metric definitions:
 
 - `recall@10`: percentage of known relevant documents retrieved in the top 10 results
 - `nDCG@10`: ranking-quality score that rewards placing more relevant documents higher in the top 10
-- pass/fail aggregation: combines judge outcomes into an explicit run-level result
+- pass/fail aggregation: combines two judge outcomes and routes disagreements to `manual_review`
 
 ## Local demo scope
 

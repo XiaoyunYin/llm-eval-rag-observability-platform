@@ -26,6 +26,12 @@ class TraceStage(StrEnum):
     API = "api"
 
 
+class JudgeReviewStatus(StrEnum):
+    PASSED = "passed"
+    FAILED = "failed"
+    MANUAL_REVIEW = "manual_review"
+
+
 @dataclass(frozen=True)
 class Dataset:
     id: str
@@ -60,10 +66,25 @@ class ProviderConfig:
 class JudgeScore:
     id: str
     case_id: str
-    score: float
+    correctness: int
+    faithfulness: int
+    citation_quality: int
+    critical_unsupported_claim: bool
     passed: bool
     reason: str
     judge_model: str
+
+
+@dataclass(frozen=True)
+class JudgeReview:
+    id: str
+    case_id: str
+    judge_a_score: JudgeScore
+    judge_b_score: JudgeScore
+    judge_a_decision: bool
+    judge_b_decision: bool
+    agreement: bool
+    status: JudgeReviewStatus
 
 
 @dataclass(frozen=True)
@@ -76,6 +97,7 @@ class EvaluationResult:
     latency_ms: int
     cache_hit: bool
     judge_score: JudgeScore
+    judge_review: JudgeReview
     error: str | None = None
 
 
