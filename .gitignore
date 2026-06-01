@@ -11,6 +11,7 @@ node_modules/
 .npm-cache/
 dist/
 coverage/
+vite-dev.*.log
 
 .DS_Store
 Thumbs.db
