@@ -10,10 +10,12 @@ from app.domain.models import (
     ProviderConfig,
     ProviderKind,
     RunStatus,
+    TraceComponent,
     TraceRecord,
-    TraceStage,
 )
 from app.judging.scoring import aggregate_two_judges, build_judge_score
+from app.providers.base import ProviderRequest
+from app.providers.mock import MockProvider
 from app.schemas.evaluation import EvaluationRunCreate
 
 
@@ -155,6 +157,7 @@ class DemoEvaluationStore:
         self._traces[run.id] = self._build_traces(run.id, run.created_at)
 
     def _build_results(self, run_id: str, provider_config_id: str) -> list[EvaluationResult]:
+        provider = MockProvider(model="mock-hybrid-rag-candidate")
         case_001_judge_a = build_judge_score(
             id=f"{run_id}-judge-a-001",
             case_id="case-001",
@@ -222,7 +225,11 @@ class DemoEvaluationStore:
                 run_id=run_id,
                 case_id="case-001",
                 provider_config_id=provider_config_id,
-                answer="Use a staged key rotation: create, deploy, verify, then revoke the old key.",
+                answer=self._mock_answer(
+                    provider,
+                    "How do I rotate an API key without downtime?",
+                    fallback="Use a staged key rotation: create, deploy, verify, then revoke the old key.",
+                ),
                 latency_ms=812,
                 cache_hit=True,
                 judge_score=case_001_judge_a,
@@ -238,7 +245,11 @@ class DemoEvaluationStore:
                 run_id=run_id,
                 case_id="case-002",
                 provider_config_id=provider_config_id,
-                answer="Check dense retrieval, BM25 coverage, source freshness, and RRF weighting.",
+                answer=self._mock_answer(
+                    provider,
+                    "What should I check when retrieval quality drops?",
+                    fallback="Check dense retrieval, BM25 coverage, source freshness, and RRF weighting.",
+                ),
                 latency_ms=1044,
                 cache_hit=False,
                 judge_score=case_002_judge_a,
@@ -254,7 +265,11 @@ class DemoEvaluationStore:
                 run_id=run_id,
                 case_id="case-003",
                 provider_config_id=provider_config_id,
-                answer="Provider failures are persisted as explicit results with error and trace metadata.",
+                answer=self._mock_answer(
+                    provider,
+                    "How are failed provider calls represented?",
+                    fallback="Provider failures are persisted as explicit results with error and trace metadata.",
+                ),
                 latency_ms=677,
                 cache_hit=False,
                 judge_score=case_003_judge_a,
@@ -267,36 +282,132 @@ class DemoEvaluationStore:
             ),
         ]
 
+    def _mock_answer(self, provider: MockProvider, question: str, *, fallback: str) -> str:
+        response = provider.generate(
+            ProviderRequest(
+                messages=[
+                    {"role": "system", "content": "Answer with concise operational guidance."},
+                    {"role": "user", "content": question},
+                ],
+                generation_parameters={"temperature": 0.0, "max_tokens": 256},
+            )
+        )
+        return response.text or fallback
+
     def _build_traces(self, run_id: str, base_time: datetime) -> list[TraceRecord]:
+        provider = "mock"
+        model = "mock-hybrid-rag-candidate"
         return [
             TraceRecord(
                 id=f"{run_id}-trace-001",
                 run_id=run_id,
                 case_id="case-001",
-                stage=TraceStage.CACHE,
-                name="cache.lookup",
+                component=TraceComponent.GATEWAY,
+                provider=provider,
+                model=model,
+                cache_status="not_applicable",
+                latency_ms=8,
+                token_count=0,
+                estimated_cost=0.0,
+                error_type=None,
+                status="ok",
                 started_at=base_time + timedelta(seconds=1),
-                duration_ms=14,
-                attributes={"cache_hit": True, "cache_key_shape": "provider:model:dataset:case"},
+                attributes={"route": "provider_gateway.generate", "provider_mode": "mock"},
             ),
             TraceRecord(
                 id=f"{run_id}-trace-002",
                 run_id=run_id,
-                case_id="case-002",
-                stage=TraceStage.RETRIEVAL,
-                name="retrieval.hybrid_rrf",
-                started_at=base_time + timedelta(seconds=5),
-                duration_ms=143,
-                attributes={"dense_top_k": 10, "bm25_top_k": 10, "fusion": "rrf"},
+                case_id="case-001",
+                component=TraceComponent.CACHE,
+                provider=provider,
+                model=model,
+                cache_status="hit",
+                latency_ms=14,
+                token_count=0,
+                estimated_cost=0.0,
+                error_type=None,
+                status="ok",
+                started_at=base_time + timedelta(seconds=2),
+                attributes={"cache_key_shape": "provider:model:prompt:retrieval:context:tools:judge"},
             ),
             TraceRecord(
                 id=f"{run_id}-trace-003",
                 run_id=run_id,
+                case_id="case-002",
+                component=TraceComponent.RETRIEVAL,
+                provider=provider,
+                model=model,
+                cache_status="miss",
+                latency_ms=143,
+                token_count=0,
+                estimated_cost=0.0,
+                error_type=None,
+                status="ok",
+                started_at=base_time + timedelta(seconds=5),
+                attributes={"dense_top_k": 30, "bm25_top_k": 30, "fusion": "rrf", "rrf_k": 60},
+            ),
+            TraceRecord(
+                id=f"{run_id}-trace-004",
+                run_id=run_id,
+                case_id="case-002",
+                component=TraceComponent.PROVIDER,
+                provider=provider,
+                model=model,
+                cache_status="miss",
+                latency_ms=48,
+                token_count=96,
+                estimated_cost=0.0,
+                error_type=None,
+                status="ok",
+                started_at=base_time + timedelta(seconds=7),
+                attributes={"provider_class": "MockProvider", "default_demo_provider": True},
+            ),
+            TraceRecord(
+                id=f"{run_id}-trace-005",
+                run_id=run_id,
                 case_id="case-003",
-                stage=TraceStage.JUDGE,
-                name="judge.score_answer",
+                component=TraceComponent.JUDGE,
+                provider=provider,
+                model="mock-judge-a-v1",
+                cache_status="not_applicable",
+                latency_ms=231,
+                token_count=128,
+                estimated_cost=0.0,
+                error_type=None,
+                status="ok",
                 started_at=base_time + timedelta(seconds=12),
-                duration_ms=231,
-                attributes={"judge_model": "mock-judge-v1", "passed": True},
+                attributes={"judge_a_decision": True, "judge_b_decision": True, "agreement": True},
+            ),
+            TraceRecord(
+                id=f"{run_id}-trace-006",
+                run_id=run_id,
+                case_id="case-001",
+                component=TraceComponent.TOOL,
+                provider=provider,
+                model=model,
+                cache_status="not_applicable",
+                latency_ms=33,
+                token_count=0,
+                estimated_cost=0.0,
+                error_type=None,
+                status="ok",
+                started_at=base_time + timedelta(seconds=14),
+                attributes={"tool_name": "lookup_runbook", "tool_schema_hash": "seeded-demo"},
+            ),
+            TraceRecord(
+                id=f"{run_id}-trace-007",
+                run_id=run_id,
+                case_id=None,
+                component=TraceComponent.STORAGE,
+                provider=provider,
+                model=model,
+                cache_status="not_applicable",
+                latency_ms=19,
+                token_count=0,
+                estimated_cost=0.0,
+                error_type=None,
+                status="ok",
+                started_at=base_time + timedelta(seconds=16),
+                attributes={"storage_target": "in_memory_demo_store", "future_target": "postgresql"},
             ),
         ]

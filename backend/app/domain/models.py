@@ -18,12 +18,14 @@ class ProviderKind(StrEnum):
     VLLM = "vllm"
 
 
-class TraceStage(StrEnum):
-    RETRIEVAL = "retrieval"
-    GENERATION = "generation"
-    JUDGE = "judge"
+class TraceComponent(StrEnum):
+    GATEWAY = "gateway"
     CACHE = "cache"
-    API = "api"
+    RETRIEVAL = "retrieval"
+    PROVIDER = "provider"
+    JUDGE = "judge"
+    TOOL = "tool"
+    STORAGE = "storage"
 
 
 class JudgeReviewStatus(StrEnum):
@@ -106,10 +108,16 @@ class TraceRecord:
     id: str
     run_id: str
     case_id: str | None
-    stage: TraceStage
-    name: str
+    component: TraceComponent
+    provider: str
+    model: str
+    cache_status: str
+    latency_ms: int
+    token_count: int
+    estimated_cost: float
+    error_type: str | None
+    status: str
     started_at: datetime
-    duration_ms: int
     attributes: dict[str, Any] = field(default_factory=dict)
 
 

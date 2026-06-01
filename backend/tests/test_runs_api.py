@@ -42,8 +42,32 @@ def test_get_run_traces_returns_trace_records() -> None:
 
     assert response.status_code == 200
     traces = response.json()
-    assert [trace["stage"] for trace in traces] == ["cache", "retrieval", "judge"]
-    assert traces[1]["attributes"]["fusion"] == "rrf"
+    assert [trace["component"] for trace in traces] == [
+        "gateway",
+        "cache",
+        "retrieval",
+        "provider",
+        "judge",
+        "tool",
+        "storage",
+    ]
+    assert traces[0].keys() >= {
+        "run_id",
+        "case_id",
+        "component",
+        "provider",
+        "model",
+        "cache_status",
+        "latency_ms",
+        "token_count",
+        "estimated_cost",
+        "error_type",
+        "status",
+    }
+    assert traces[2]["attributes"]["fusion"] == "rrf"
+    assert traces[3]["provider"] == "mock"
+    assert traces[3]["model"] == "mock-hybrid-rag-candidate"
+    assert traces[3]["estimated_cost"] == 0.0
 
 
 def test_create_run_returns_created_demo_run() -> None:

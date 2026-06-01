@@ -3,7 +3,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.domain.models import JudgeReviewStatus, ProviderKind, RunStatus, TraceStage
+from app.domain.models import JudgeReviewStatus, ProviderKind, RunStatus, TraceComponent
 
 
 class DatasetSchema(BaseModel):
@@ -124,10 +124,16 @@ class TraceRecordSchema(BaseModel):
     id: str
     run_id: str
     case_id: str | None
-    stage: TraceStage
-    name: str
+    component: TraceComponent
+    provider: str
+    model: str
+    cache_status: str
+    latency_ms: int
+    token_count: int
+    estimated_cost: float
+    error_type: str | None
+    status: str
     started_at: datetime
-    duration_ms: int
     attributes: dict[str, Any] = Field(default_factory=dict)
 
     model_config = ConfigDict(from_attributes=True)
