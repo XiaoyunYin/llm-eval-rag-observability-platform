@@ -1,0 +1,244 @@
+from copy import deepcopy
+from datetime import datetime, timedelta, timezone
+from uuid import uuid4
+
+from app.domain.models import (
+    Dataset,
+    EvaluationCase,
+    EvaluationResult,
+    EvaluationRun,
+    JudgeScore,
+    ProviderConfig,
+    ProviderKind,
+    RunStatus,
+    TraceRecord,
+    TraceStage,
+)
+from app.schemas.evaluation import EvaluationRunCreate
+
+
+DEMO_METRICS = {
+    "label": "controlled demo metrics",
+    "dense_only_recall_at_10": 0.69,
+    "hybrid_recall_at_10": 0.84,
+    "dense_only_ndcg_at_10": 0.62,
+    "hybrid_ndcg_at_10": 0.79,
+    "judge_agreement_percent": 84,
+    "cache_hit_rate_percent": 40,
+    "is_controlled_demo": True,
+}
+
+
+class DemoEvaluationStore:
+    """Seeded in-memory store with a narrow boundary for future SQLAlchemy wiring."""
+
+    def __init__(self) -> None:
+        self._datasets: dict[str, Dataset] = {}
+        self._cases: dict[str, EvaluationCase] = {}
+        self._providers: dict[str, ProviderConfig] = {}
+        self._runs: dict[str, EvaluationRun] = {}
+        self._traces: dict[str, list[TraceRecord]] = {}
+        self._seed()
+
+    def list_runs(self) -> list[EvaluationRun]:
+        return sorted(self._runs.values(), key=lambda run: run.created_at, reverse=True)
+
+    def get_run(self, run_id: str) -> EvaluationRun | None:
+        return self._runs.get(run_id)
+
+    def list_traces(self, run_id: str) -> list[TraceRecord] | None:
+        if run_id not in self._runs:
+            return None
+        return self._traces.get(run_id, [])
+
+    def create_run(self, payload: EvaluationRunCreate) -> EvaluationRun:
+        dataset = self._datasets.get(payload.dataset_id or "demo-dataset-001")
+        if dataset is None:
+            dataset = next(iter(self._datasets.values()))
+
+        baseline = self._providers.get(payload.baseline_provider_id or "provider-dense-only")
+        candidate = self._providers.get(payload.candidate_provider_id or "provider-hybrid-rag")
+
+        if baseline is None:
+            baseline = self._providers["provider-dense-only"]
+        if candidate is None:
+            candidate = self._providers["provider-hybrid-rag"]
+
+        now = datetime.now(timezone.utc)
+        run_id = f"run-{uuid4().hex[:12]}"
+        results = self._build_results(run_id, candidate.id)
+        run = EvaluationRun(
+            id=run_id,
+            name=payload.name,
+            dataset=dataset,
+            baseline_provider=baseline,
+            candidate_provider=candidate,
+            status=RunStatus.COMPLETED,
+            metrics=deepcopy(DEMO_METRICS),
+            results=results,
+            created_at=now,
+            completed_at=now + timedelta(seconds=18),
+        )
+
+        self._runs[run.id] = run
+        self._traces[run.id] = self._build_traces(run.id, now)
+        return run
+
+    def _seed(self) -> None:
+        created_at = datetime(2026, 5, 31, 20, 0, tzinfo=timezone.utc)
+        dataset = Dataset(
+            id="demo-dataset-001",
+            name="Customer support RAG evaluation set",
+            description="Seeded questions and relevance labels for a controlled demo workload.",
+            version="2026.05-demo",
+            case_count=3,
+            created_at=created_at,
+        )
+        self._datasets[dataset.id] = dataset
+
+        cases = [
+            EvaluationCase(
+                id="case-001",
+                dataset_id=dataset.id,
+                input_text="How do I rotate an API key without downtime?",
+                expected_answer="Create a second key, deploy it, then revoke the old key after traffic moves.",
+                relevant_document_ids=["doc-auth-rotate", "doc-auth-secrets"],
+                tags=["security", "runbook"],
+            ),
+            EvaluationCase(
+                id="case-002",
+                dataset_id=dataset.id,
+                input_text="What should I check when retrieval quality drops?",
+                expected_answer="Inspect embeddings, BM25 coverage, document freshness, and fusion weights.",
+                relevant_document_ids=["doc-rag-debug", "doc-index-health"],
+                tags=["rag", "observability"],
+            ),
+            EvaluationCase(
+                id="case-003",
+                dataset_id=dataset.id,
+                input_text="How are failed provider calls represented?",
+                expected_answer="Store them as explicit failed results with error context and trace links.",
+                relevant_document_ids=["doc-provider-errors"],
+                tags=["providers", "traces"],
+            ),
+        ]
+        self._cases.update({case.id: case for case in cases})
+
+        dense_provider = ProviderConfig(
+            id="provider-dense-only",
+            name="Dense-only retriever baseline",
+            kind=ProviderKind.MOCK,
+            model_name="mock-dense-baseline",
+        )
+        hybrid_provider = ProviderConfig(
+            id="provider-hybrid-rag",
+            name="Hybrid RAG candidate",
+            kind=ProviderKind.MOCK,
+            model_name="mock-hybrid-rag-candidate",
+        )
+        self._providers[dense_provider.id] = dense_provider
+        self._providers[hybrid_provider.id] = hybrid_provider
+
+        run = EvaluationRun(
+            id="run-demo-001",
+            name="Controlled demo: dense baseline vs hybrid RAG",
+            dataset=dataset,
+            baseline_provider=dense_provider,
+            candidate_provider=hybrid_provider,
+            status=RunStatus.COMPLETED,
+            metrics=deepcopy(DEMO_METRICS),
+            results=self._build_results("run-demo-001", hybrid_provider.id),
+            created_at=created_at + timedelta(minutes=5),
+            completed_at=created_at + timedelta(minutes=5, seconds=18),
+        )
+        self._runs[run.id] = run
+        self._traces[run.id] = self._build_traces(run.id, run.created_at)
+
+    def _build_results(self, run_id: str, provider_config_id: str) -> list[EvaluationResult]:
+        return [
+            EvaluationResult(
+                id=f"{run_id}-result-001",
+                run_id=run_id,
+                case_id="case-001",
+                provider_config_id=provider_config_id,
+                answer="Use a staged key rotation: create, deploy, verify, then revoke the old key.",
+                latency_ms=812,
+                cache_hit=True,
+                judge_score=JudgeScore(
+                    id=f"{run_id}-judge-001",
+                    case_id="case-001",
+                    score=0.91,
+                    passed=True,
+                    reason="Answer covers staged rotation and revocation order.",
+                    judge_model="mock-judge-v1",
+                ),
+            ),
+            EvaluationResult(
+                id=f"{run_id}-result-002",
+                run_id=run_id,
+                case_id="case-002",
+                provider_config_id=provider_config_id,
+                answer="Check dense retrieval, BM25 coverage, source freshness, and RRF weighting.",
+                latency_ms=1044,
+                cache_hit=False,
+                judge_score=JudgeScore(
+                    id=f"{run_id}-judge-002",
+                    case_id="case-002",
+                    score=0.86,
+                    passed=True,
+                    reason="Answer names the main retrieval diagnostics expected by the rubric.",
+                    judge_model="mock-judge-v1",
+                ),
+            ),
+            EvaluationResult(
+                id=f"{run_id}-result-003",
+                run_id=run_id,
+                case_id="case-003",
+                provider_config_id=provider_config_id,
+                answer="Provider failures are persisted as explicit results with error and trace metadata.",
+                latency_ms=677,
+                cache_hit=False,
+                judge_score=JudgeScore(
+                    id=f"{run_id}-judge-003",
+                    case_id="case-003",
+                    score=0.77,
+                    passed=True,
+                    reason="Answer captures explicit failure storage but omits retry metadata.",
+                    judge_model="mock-judge-v1",
+                ),
+            ),
+        ]
+
+    def _build_traces(self, run_id: str, base_time: datetime) -> list[TraceRecord]:
+        return [
+            TraceRecord(
+                id=f"{run_id}-trace-001",
+                run_id=run_id,
+                case_id="case-001",
+                stage=TraceStage.CACHE,
+                name="cache.lookup",
+                started_at=base_time + timedelta(seconds=1),
+                duration_ms=14,
+                attributes={"cache_hit": True, "cache_key_shape": "provider:model:dataset:case"},
+            ),
+            TraceRecord(
+                id=f"{run_id}-trace-002",
+                run_id=run_id,
+                case_id="case-002",
+                stage=TraceStage.RETRIEVAL,
+                name="retrieval.hybrid_rrf",
+                started_at=base_time + timedelta(seconds=5),
+                duration_ms=143,
+                attributes={"dense_top_k": 10, "bm25_top_k": 10, "fusion": "rrf"},
+            ),
+            TraceRecord(
+                id=f"{run_id}-trace-003",
+                run_id=run_id,
+                case_id="case-003",
+                stage=TraceStage.JUDGE,
+                name="judge.score_answer",
+                started_at=base_time + timedelta(seconds=12),
+                duration_ms=231,
+                attributes={"judge_model": "mock-judge-v1", "passed": True},
+            ),
+        ]

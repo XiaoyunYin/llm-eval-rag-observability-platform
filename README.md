@@ -9,11 +9,12 @@ The public repository is a runnable demo version focused on architecture clarity
 The repository contains:
 
 - FastAPI backend with a `/health` endpoint
+- Evaluation run API skeleton with seeded demo run data
 - React + TypeScript + Vite frontend landing page
 - Docker Compose services for backend, frontend, PostgreSQL with pgvector, Redis, and Elasticsearch
 - Configuration through environment variables with `.env.example`
 
-Future implementation phases will add evaluation runs, hybrid RAG retrieval, metrics, provider adapters, trace recording, and trace search.
+Future implementation phases will deepen the retrieval implementation, provider adapters, trace persistence, and trace search.
 
 ## Architecture Diagram
 
@@ -46,6 +47,13 @@ Then open:
 - Frontend: http://localhost:5173
 - Backend health: http://localhost:8000/health
 - Backend API docs: http://localhost:8000/docs
+
+Seeded API routes:
+
+- `POST /api/runs`
+- `GET /api/runs`
+- `GET /api/runs/{run_id}`
+- `GET /api/runs/{run_id}/traces`
 
 Backend-only local run:
 
@@ -82,7 +90,16 @@ This repository is structured to demonstrate:
 
 ## Metrics Explanation
 
-Planned retrieval and evaluation metrics:
+Seeded controlled demo metrics:
+
+- dense-only `recall@10`: `0.69`
+- hybrid `recall@10`: `0.84`
+- dense-only `nDCG@10`: `0.62`
+- hybrid `nDCG@10`: `0.79`
+- judge agreement: `84%`
+- cache hit rate: `40%`
+
+Retrieval and evaluation metric definitions:
 
 - `recall@10`: percentage of known relevant documents retrieved in the top 10 results
 - `nDCG@10`: ranking-quality score that rewards placing more relevant documents higher in the top 10
@@ -92,6 +109,7 @@ Planned retrieval and evaluation metrics:
 
 - The public repo is a runnable demo version, not a production deployment.
 - The workload is seeded and controlled for local review.
+- Seeded metric values are clearly labeled as controlled demo metrics.
 - Mock providers are used by default so the project can run without OpenAI, Anthropic, or AWS keys.
 - It does not claim production usage, production traffic, or company deployment.
 - Data services are configured for local development, not managed production deployment.
