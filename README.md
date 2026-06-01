@@ -118,10 +118,6 @@ npm run dev
 | Provider gateway abstraction | `backend/app/providers/` |
 | Structured trace records | `TraceRecord` model, `/api/runs/{run_id}/traces` |
 
-## What's next
-
-The main gaps are swapping the mock provider for a real OpenAI/Anthropic adapter (with retries, rate limits, and cost tracking), persisting runs to Postgres with SQLAlchemy, and indexing traces into Elasticsearch so the search API actually queries something. After that: pgvector-backed dense retrieval, a real BM25 index, and dashboard filters for dataset/provider/status.
-
 ## Docs
 
 - [Architecture deep-dive](docs/architecture.md)
