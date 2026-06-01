@@ -10,6 +10,7 @@ The repository contains:
 
 - FastAPI backend with a `/health` endpoint
 - Evaluation run API skeleton with seeded demo run data
+- Deterministic evaluation cache-key generation for Redis-style correctness
 - React + TypeScript + Vite frontend landing page
 - Docker Compose services for backend, frontend, PostgreSQL with pgvector, Redis, and Elasticsearch
 - Configuration through environment variables with `.env.example`
