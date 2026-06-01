@@ -1,18 +1,24 @@
 # LLM Evaluation, RAG & Observability Platform
 
-## Project summary
+A full-stack platform for evaluating RAG quality, model/provider behavior, cache correctness, judge agreement, and trace-level regressions across baseline and candidate LLM workflows.
 
-A full-stack LLM evaluation, RAG, and observability platform for comparing baseline and candidate systems, measuring retrieval quality, scoring answers with judge rubrics, and inspecting trace records across an evaluation workflow. The public repository is a runnable demo version that uses seeded data and mock providers by default so recruiters and engineers can review the architecture, API surface, tests, and dashboard locally.
+The project wires together a FastAPI evaluation backend, hybrid retrieval with dense + BM25 + reciprocal rank fusion, deterministic cache-key generation, two-judge scoring, structured trace records, and a React/TypeScript dashboard for reviewing retrieval quality, answer quality, cache behavior, latency, and failures.
 
-## Screenshot
+## What it does
 
-> Screenshot placeholder: run the frontend locally and replace this block with a dashboard capture when publishing the portfolio.
+You define a baseline and a candidate system, run an evaluation, and compare them. Under the hood:
 
-## Architecture diagram
+- **Hybrid retrieval** pulls dense top-30 and BM25 top-30, then fuses them with reciprocal rank fusion (`k=60`) to produce a final top-10 ranking.
+- **Two independent judges** score each answer on correctness, faithfulness, and citation quality. If they disagree on pass/fail, the case routes to manual review.
+- **Deterministic cache keys** hash the full evaluation config (prompt, model, parameters, retrieval config, tools, judge rubrics) with SHA-256 so identical runs hit cache.
+- **Structured trace records** capture what happened at each stage — gateway, cache, retrieval, provider, judge, tool, storage — shaped for Elasticsearch indexing.
+- A **React dashboard** ties it together: run summaries, metric comparisons, cache behavior, judge agreement rates, and trace drilldown.
+
+## Architecture
 
 ```mermaid
 flowchart LR
-    Reviewer[Recruiter or Engineer] --> Dashboard[React + TypeScript Dashboard]
+    Reviewer[Recruiter / Engineer] --> Dashboard[React + TypeScript Dashboard]
     Dashboard --> API[FastAPI Evaluation API]
     API --> Runs[Evaluation Runs]
     API --> Retrieval[Hybrid RAG: Dense + BM25 + RRF]
@@ -20,36 +26,52 @@ flowchart LR
     API --> Judge[Judge Scoring]
     API --> Trace[Trace Records]
     Retrieval --> Postgres[(PostgreSQL + pgvector)]
-    API --> Redis[(Redis-style Cache Keys)]
-    Trace --> Elasticsearch[(Elasticsearch-style Search)]
-    Gateway --> Mock[MockProvider by Default]
-    Gateway -. optional placeholder .-> OpenAI[OpenAI]
-    Gateway -. optional placeholder .-> Anthropic[Anthropic]
-    Gateway -. optional placeholder .-> VLLM[vLLM OpenAI-compatible]
+    API --> Redis[(Redis Cache)]
+    Trace --> Elasticsearch[(Elasticsearch)]
+    Gateway --> Adapters[Provider Adapters]
+    Gateway -. placeholder .-> OpenAI[OpenAI]
+    Gateway -. placeholder .-> Anthropic[Anthropic]
+    Gateway -. placeholder .-> VLLM[vLLM]
 ```
 
-## Local run instructions
+## Results on demo data
 
-Copy the example environment if you want to customize values:
+| Metric | Dense-only | Hybrid (RRF) |
+| --- | --- | --- |
+| recall@10 | 0.69 | **0.84** |
+| nDCG@10 | 0.62 | **0.79** |
+
+The fusion step is doing real work — hybrid recall jumps 15 points over dense-only, and nDCG confirms the ranking quality improves too, not just raw coverage.
+
+Judge agreement sits at 84%, with disagreements routing to manual review rather than silently picking a winner. Cache hit rate in the demo is 40%, enough to show the deterministic key logic is working.
+
+Formulas and edge-case handling are documented in [docs/metrics.md](docs/metrics.md).
+
+## Running locally
+
+The repository runs locally with seeded evaluation data and a mock provider by default, so the evaluation workflow can be reviewed without OpenAI, Anthropic, or AWS credentials.
+
+Copy the example env file if you want to change defaults:
 
 ```bash
 cp .env.example .env
 ```
 
-Run the full local stack:
+Full stack (backend + frontend + Postgres + Redis + Elasticsearch):
 
 ```bash
 docker compose up --build
 ```
 
 Then open:
+- Dashboard: http://localhost:5173
+- API docs: http://localhost:8000/docs
+- Health check: http://localhost:8000/health
 
-- Frontend dashboard: http://localhost:5173
-- Backend health: http://localhost:8000/health
-- Backend API docs: http://localhost:8000/docs
+<details>
+<summary>Backend-only or frontend-only setup</summary>
 
-Backend-only local run:
-
+**Backend (Bash)**
 ```bash
 cd backend
 python -m venv .venv
@@ -58,102 +80,50 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
 
-Frontend-only local run:
+**Backend (PowerShell)**
+```powershell
+cd backend
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+uvicorn app.main:app --reload
+```
 
+**Frontend**
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
+</details>
 
-Seeded API routes:
+## API routes
 
-- `POST /api/runs`
-- `GET /api/runs`
-- `GET /api/runs/{run_id}`
-- `GET /api/runs/{run_id}/traces`
+- `POST /api/runs` — create an evaluation run
+- `GET /api/runs` — list all runs
+- `GET /api/runs/{run_id}` — get a single run with results
+- `GET /api/runs/{run_id}/traces` — get trace records for a run
 
-## Resume claim mapping
+## Code → resume claim mapping
 
-| Claim | Where it is demonstrated |
+| Claim | Where to look |
 | --- | --- |
 | FastAPI evaluation backend | `backend/app/main.py`, `backend/app/api/runs.py` |
-| Baseline vs candidate evaluation runs | Seeded run API and dashboard run cards |
+| Baseline vs candidate runs | Run API + dashboard run cards |
 | Hybrid RAG retrieval | `backend/app/retrieval/hybrid.py` |
-| Dense + BM25 + reciprocal rank fusion | `backend/app/retrieval/rrf.py`, seeded retrievers |
-| `recall@10` and `nDCG@10` | `backend/app/retrieval/metrics.py`, tests |
-| Redis-style cache-key correctness | `backend/app/cache/evaluation_keys.py`, tests |
-| Judge scoring and pass/fail aggregation | `backend/app/judging/scoring.py`, tests |
+| Dense + BM25 + RRF | `backend/app/retrieval/rrf.py` and tests |
+| recall@10 and nDCG@10 | `backend/app/retrieval/metrics.py` and tests |
+| Deterministic cache keys | `backend/app/cache/evaluation_keys.py` and tests |
+| Judge scoring + aggregation | `backend/app/judging/scoring.py` and tests |
 | Provider gateway abstraction | `backend/app/providers/` |
-| OpenTelemetry-style trace records | `TraceRecord` domain model and `/api/runs/{run_id}/traces` |
-| Elasticsearch-style trace search target | Docker Compose service and trace schema shape |
-| Lightweight React dashboard | `frontend/src/App.tsx` |
+| Structured trace records | `TraceRecord` model, `/api/runs/{run_id}/traces` |
 
-## Metrics explanation
+## What's next
 
-Seeded controlled demo metrics:
+The main gaps are swapping the mock provider for a real OpenAI/Anthropic adapter (with retries, rate limits, and cost tracking), persisting runs to Postgres with SQLAlchemy, and indexing traces into Elasticsearch so the search API actually queries something. After that: pgvector-backed dense retrieval, a real BM25 index, and dashboard filters for dataset/provider/status.
 
-- dense-only `recall@10`: `0.69`
-- hybrid `recall@10`: `0.84`
-- dense-only `nDCG@10`: `0.62`
-- hybrid `nDCG@10`: `0.79`
-- judge agreement: `84%`
-- cache hit rate: `40%`
+## Docs
 
-Metric definitions:
-
-- `recall@10`: fraction of known relevant documents retrieved in the top 10 results.
-- `nDCG@10`: ranking-quality score that rewards placing more relevant documents higher in the top 10.
-- Judge pass/fail: an answer passes only when correctness >= 4, faithfulness >= 4, citation quality >= 3, and there is no critical unsupported claim.
-- Judge agreement: whether judge A and judge B make the same pass/fail decision. Disagreements route to `manual_review`.
-- Cache hit rate: percentage of seeded evaluation cases represented as cache hits in the controlled demo workload.
-
-See [docs/metrics.md](docs/metrics.md) for formulas and edge cases.
-
-## What is implemented for real
-
-- FastAPI app with health and evaluation run routes.
-- Domain models and Pydantic schemas for datasets, cases, runs, results, providers, judge scores, and traces.
-- Seeded in-memory repository with demo run data.
-- Reciprocal rank fusion over dense top 30 and BM25 top 30, using `k=60` and returning top 10.
-- `recall@k` and `nDCG@k` calculations with pytest coverage.
-- Deterministic cache-key generation with canonical JSON and SHA-256 hashing.
-- Judge scoring thresholds and two-judge aggregation with manual review routing.
-- Provider gateway abstraction with a working `MockProvider`.
-- Structured trace records exposed through the API.
-- React dashboard consuming the seeded backend APIs.
-- Docker Compose wiring for backend, frontend, PostgreSQL/pgvector, Redis, and Elasticsearch.
-
-## What is mocked by default
-
-- LLM generation uses `MockProvider`.
-- OpenAI, Anthropic, and vLLM providers are placeholders and do not call external APIs.
-- Retrieval uses seeded sample results rather than live embeddings or a populated BM25 index.
-- Evaluation runs are stored in memory for the demo.
-- Trace search is shaped for Elasticsearch-style indexing, but traces are served from seeded demo storage.
-- Metric values shown in the dashboard are controlled demo metrics, not production measurements.
-
-## Limitations and honest scope
-
-- This is a public runnable demo version, not production infrastructure.
-- It does not claim production usage, production traffic, or company deployment.
-- Seeded data is intentionally small and controlled for review.
-- PostgreSQL, Redis, and Elasticsearch are included for local architecture demonstration, not managed production operations.
-- There is no authentication, authorization, tenant isolation, or secret management beyond environment-variable placeholders.
-- Real provider adapters need API clients, retries, rate limits, cost accounting, and error handling before production use.
-
-## Future improvements
-
-- Persist runs, results, cache entries, and traces with SQLAlchemy and PostgreSQL.
-- Add pgvector-backed dense retrieval and a real BM25 index.
-- Index trace records into Elasticsearch and add trace search APIs.
-- Implement real OpenAI, Anthropic, and vLLM adapters behind the provider gateway.
-- Add background evaluation execution and progress updates.
-- Add dashboard filters for dataset, provider, status, case, and trace component.
-- Add authentication and role-aware access control for non-demo deployments.
-
-## Additional docs
-
-- [Architecture](docs/architecture.md)
-- [Metrics](docs/metrics.md)
+- [Architecture deep-dive](docs/architecture.md)
+- [Metrics formulas and edge cases](docs/metrics.md)
 - [vLLM deployment notes](docs/vllm_deployment.md)

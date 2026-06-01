@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg://llm_eval:llm_eval_password@localhost:5432/llm_eval"
     redis_url: str = "redis://localhost:6379/0"
     elasticsearch_url: str = "http://localhost:9200"
-    api_cors_origins: str = Field(default="http://localhost:5173")
+    api_cors_origins: str = Field(default="http://localhost:5173,http://127.0.0.1:5173")
 
     @property
     def cors_origins(self) -> list[str]:

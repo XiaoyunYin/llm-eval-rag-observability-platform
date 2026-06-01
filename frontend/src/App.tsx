@@ -155,10 +155,10 @@ function App() {
   const metrics = selectedRun?.metrics;
   const results = useMemo(() => selectedRun?.results ?? [], [selectedRun]);
 
-  const cacheCounts = useMemo(() => {
-    const hits = results.filter((result) => result.cache_hit).length;
-    return { hits, misses: Math.max(results.length - hits, 0) };
-  }, [results]);
+  const cacheRates = useMemo(() => {
+    const hitRate = metrics?.cache_hit_rate_percent ?? 0;
+    return { hitRate, missRate: Math.max(100 - hitRate, 0) };
+  }, [metrics]);
 
   const manualReviewCount = useMemo(
     () => results.filter((result) => result.judge_review.status === "manual_review").length,
@@ -243,14 +243,14 @@ function App() {
             <p className="eyebrow">Cache behavior</p>
             <h2>{metrics ? `${metrics.cache_hit_rate_percent}% hit rate` : "—"}</h2>
           </div>
-          <div className="cache-bars" aria-label="Cache hit and miss counts">
-            <div style={{ "--bar-size": cacheCounts.hits || 0 } as CSSProperties}>
-              <span>Hits</span>
-              <strong>{cacheCounts.hits}</strong>
+          <div className="cache-bars" aria-label="Cache hit and miss rates">
+            <div style={{ "--bar-size": cacheRates.hitRate / 20 } as CSSProperties}>
+              <span>Hit rate</span>
+              <strong>{cacheRates.hitRate}%</strong>
             </div>
-            <div style={{ "--bar-size": cacheCounts.misses || 0 } as CSSProperties}>
-              <span>Misses</span>
-              <strong>{cacheCounts.misses}</strong>
+            <div style={{ "--bar-size": cacheRates.missRate / 20 } as CSSProperties}>
+              <span>Miss rate</span>
+              <strong>{cacheRates.missRate}%</strong>
             </div>
           </div>
         </div>

@@ -14,6 +14,8 @@ Additional seeded values:
 - Judge agreement: `84%`
 - Cache hit rate: `40%`
 
+The cache hit rate is a controlled aggregate demo metric. It is not derived from production Redis traffic.
+
 ## recall@k
 
 `recall@k` measures how many known relevant chunks appear in the first `k` retrieved chunks.
@@ -34,7 +36,7 @@ Edge cases:
 `nDCG@k` measures ranking quality by discounting relevant chunks that appear lower in the ranking.
 
 ```text
-DCG@k = sum(gain_i / log2(i + 1))
+DCG@k = sum(gain_at_rank / log2(rank + 1))
 nDCG@k = DCG@k / ideal DCG@k
 ```
 
